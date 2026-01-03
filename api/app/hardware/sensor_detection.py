@@ -31,6 +31,9 @@ class SensorDetector:
         try:
             self.bus = smbus2.SMBus(self.bus_number)
             logger.info(f"Initialized I2C bus {self.bus_number}")
+            # Small delay to ensure bus is ready
+            import time
+            time.sleep(0.1)
             return True
         except Exception as e:
             logger.error(f"Failed to initialize I2C bus {self.bus_number}: {e}")
@@ -167,8 +170,14 @@ def detect_sensors() -> Dict[str, int]:
 
 def get_bme680_address() -> Optional[int]:
     """Get BME680 sensor address"""
+    # Ensure bus is scanned before identifying
+    if not _detector.detected_devices:
+        _detector.scan_bus()
     return _detector.identify_bme680()
 
 def get_ssd1322_address() -> Optional[int]:
     """Get SSD1322 display address"""
+    # Ensure bus is scanned before identifying
+    if not _detector.detected_devices:
+        _detector.scan_bus()
     return _detector.identify_ssd1322()
