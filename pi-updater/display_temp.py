@@ -123,7 +123,9 @@ def display_status():
     temp_status = temperature.get_sensor_details()
     print(f"Temperature Sensor: {'✅ Active' if temp_status.get('available') else '❌ Not Available'}")
     if temp_status.get('available'):
-        print(".1f"
+        temp = temp_status.get('temperature')
+        if temp is not None:
+            print(f"  Temperature: {temp:.1f}°C")
     # Check OLED display
     display = oled_display.OLED_Display()
     display_status = display.get_display_info()
