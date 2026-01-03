@@ -64,6 +64,10 @@ python3 -m venv pi-updater/venv
 source pi-updater/venv/bin/activate
 pip install -r pi-updater/requirements.txt
 
+# Install sensor libraries in the main environment (for Docker)
+log "Installing sensor libraries..."
+pip install smbus2 adafruit-circuitpython-bme680 adafruit-circuitpython-ssd1322
+
 # Create .env file
 if [ ! -f .env ]; then
     log "Creating .env file..."
@@ -79,6 +83,7 @@ mkdir -p data
 log "Making scripts executable..."
 chmod +x pi-updater/auto-update.sh
 chmod +x pi-updater/install.sh
+chmod +x pi-updater/test_sensors.py
 
 # Set up webhook service (optional)
 read -p "Do you want to set up webhook-based updates? (y/n): " -n 1 -r
@@ -125,13 +130,26 @@ else
     exit 1
 fi
 
+# Test sensors (optional)
+read -p "Do you want to test the sensors now? (y/n): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    log "Testing sensors..."
+    if python3 pi-updater/test_sensors.py; then
+        log "Sensor tests passed!"
+    else
+        log "WARNING: Some sensor tests failed. Check sensor connections and try again."
+    fi
+fi
+
 log "Installation completed successfully!"
 log ""
 log "Next steps:"
 log "1. Edit .env file with your configuration"
 log "2. Access the application at http://localhost:3000"
 log "3. Check logs with: docker compose logs -f"
-log "4. If using webhook updates, start the service with: sudo systemctl start breatheasy-webhook"
+log "4. Test sensors with: python3 pi-updater/test_sensors.py"
+log "5. If using webhook updates, start the service with: sudo systemctl start breatheasy-webhook"
 
 # Print service status
 log ""
