@@ -5,7 +5,6 @@ This module provides functions to read temperature and humidity from BME680 sens
 
 from typing import Tuple, Optional
 import logging
-from .air_quality import _bme680_sensor
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -15,17 +14,26 @@ def read_temperature_humidity() -> Tuple[Optional[float], Optional[float]]:
     Read temperature and humidity from BME680 sensor
     Returns: (temperature, humidity) in °C and % or None if reading fails
     """
-    global _bme680_sensor
+    # Import here to avoid circular imports and access the shared sensor
+    from . import air_quality
 
-    if not _bme680_sensor:
-        from . import air_quality
+    # Ensure sensor is initialized
+    if not air_quality._bme680_sensor:
+        logger.info("BME680 sensor not initialized yet, initializing...")
         if not air_quality.initialize_sensor():
             logger.warning("BME680 sensor not available - using mock data")
             return _get_mock_readings()
 
     try:
-        temperature = _bme680_sensor.temperature
-        humidity = _bme680_sensor.humidity
+        sensor = air_quality._bme680_sensor
+        
+        # Check if sensor has the expected attributes
+        if not hasattr(sensor, 'temperature'):
+            logger.error("BME680 sensor object missing 'temperature' attribute")
+            return None, None
+
+        temperature = sensor.temperature
+        humidity = sensor.humidity
 
         if temperature is None or humidity is None:
             logger.warning("BME680 returned None values for temperature/humidity")
@@ -34,6 +42,9 @@ def read_temperature_humidity() -> Tuple[Optional[float], Optional[float]]:
         logger.debug(f"Temperature: {temperature:.1f}°C, Humidity: {humidity:.1f}%")
         return temperature, humidity
 
+    except AttributeError as e:
+        logger.error(f"BME680 sensor attribute error: {e}")
+        return None, None
     except Exception as e:
         logger.error(f"Error reading temperature/humidity from BME680: {e}")
         return None, None
