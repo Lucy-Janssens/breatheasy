@@ -8,6 +8,10 @@ import time
 import logging
 from .sensor_detection import get_bme680_address
 
+# Configure logging FIRST
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 try:
     import smbus2
     BME680_AVAILABLE = True
@@ -26,10 +30,6 @@ try:
 except ImportError:
     ADAFRUIT_AVAILABLE = False
     logger.info("Adafruit BME680 library not available, using SMBus2")
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Global sensor instance
 _bme680_sensor = None
