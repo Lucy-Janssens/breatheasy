@@ -1,11 +1,14 @@
 FROM python:3.11-slim
 
-# Install system dependencies for Raspberry Pi GPIO
+# Install system dependencies for Raspberry Pi GPIO and sensor libraries
 RUN apt-get update && apt-get install -y \
     gcc \
     python3-dev \
     i2c-tools \
     curl \
+    build-essential \
+    libjpeg-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
