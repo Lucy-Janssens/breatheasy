@@ -37,11 +37,10 @@ class OLED_Display:
             return False
 
         try:
-            # Auto-detect SSD1322 address
-            ssd1322_addr = get_ssd1322_address()
-            if ssd1322_addr is None:
-                logger.error("SSD1322 display not detected on I2C bus")
-                return False
+            # First try manual address (0x27) since auto-detection might fail
+            ssd1322_addr = 0x27  # Known working address from i2cdetect
+
+            logger.info(f"Trying to initialize SSD1322 at address 0x{ssd1322_addr:02X}")
 
             # Initialize I2C interface
             serial = i2c(port=1, address=ssd1322_addr)
@@ -49,7 +48,7 @@ class OLED_Display:
             # Initialize SSD1322 display
             self.display = ssd1322(serial, width=self.width, height=self.height)
 
-            # Clear display
+            # Test display by clearing it
             self.clear()
 
             logger.info(f"SSD1322 display initialized at address 0x{ssd1322_addr:02X}")
@@ -57,6 +56,18 @@ class OLED_Display:
 
         except Exception as e:
             logger.error(f"Error initializing SSD1322 display: {e}")
+            # Fallback to auto-detection if manual fails
+            try:
+                ssd1322_addr = get_ssd1322_address()
+                if ssd1322_addr and ssd1322_addr != 0x27:
+                    logger.info(f"Trying auto-detected address 0x{ssd1322_addr:02X}")
+                    serial = i2c(port=1, address=ssd1322_addr)
+                    self.display = ssd1322(serial, width=self.width, height=self.height)
+                    self.clear()
+                    logger.info(f"SSD1322 display initialized at auto-detected address 0x{ssd1322_addr:02X}")
+                    return True
+            except Exception as e2:
+                logger.error(f"Auto-detection also failed: {e2}")
             return False
 
     def display_reading(self, sensor_type: str, value: float, unit: str):
