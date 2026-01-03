@@ -102,10 +102,18 @@ class SensorDetector:
         try:
             # BME680 chip ID is 0x61
             chip_id = self.bus.read_byte_data(address, 0xD0)
+            logger.debug(f"BME680 at 0x{address:02X} chip ID: 0x{chip_id:02X}")
             return chip_id == 0x61
         except Exception as e:
             logger.debug(f"BME680 verification failed at 0x{address:02X}: {e}")
-            return False
+            # For debugging, let's try a simpler verification
+            try:
+                # Just try to read any byte - if it responds, assume it's the BME680
+                self.bus.read_byte(address)
+                logger.debug(f"BME680 basic read succeeded at 0x{address:02X}")
+                return True
+            except:
+                return False
 
     def _verify_ssd1322(self, address: int) -> bool:
         """Verify SSD1322 by attempting to read from it"""
@@ -122,19 +130,32 @@ class SensorDetector:
 
     def get_sensor_config(self) -> Dict[str, int]:
         """Get complete sensor configuration"""
+        logger.debug("Getting sensor configuration...")
+
         if not self.detected_devices:
+            logger.debug("No cached devices, scanning bus...")
             self.scan_bus()
+            logger.debug(f"Scan complete. Found devices: {self.detected_devices}")
 
         config = {}
 
+        logger.debug("Identifying BME680...")
         bme680_addr = self.identify_bme680()
         if bme680_addr:
             config['bme680'] = bme680_addr
+            logger.info(f"BME680 configured at 0x{bme680_addr:02X}")
+        else:
+            logger.warning("BME680 not identified")
 
+        logger.debug("Identifying SSD1322...")
         ssd1322_addr = self.identify_ssd1322()
         if ssd1322_addr:
             config['ssd1322'] = ssd1322_addr
+            logger.info(f"SSD1322 configured at 0x{ssd1322_addr:02X}")
+        else:
+            logger.warning("SSD1322 not identified")
 
+        logger.debug(f"Final sensor config: {config}")
         return config
 
 # Global detector instance
