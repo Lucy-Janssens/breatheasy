@@ -11,6 +11,6 @@ python-multipart==0.0.6
 RPi.GPIO==0.7.1
 smbus2==0.4.3
 Pillow==10.0.1
-adafruit-circuitpython-ssd1322==1.3.0
+luma.oled==3.13.0
 adafruit-circuitpython-bme680==3.5.0
 # Add your specific sensor libraries here

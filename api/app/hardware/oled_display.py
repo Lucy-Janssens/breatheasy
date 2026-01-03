@@ -9,15 +9,13 @@ import logging
 from .sensor_detection import get_ssd1322_address
 
 try:
-    import adafruit_ssd1322
-    import board
-    import busio
-    import digitalio
+    from luma.oled.device import ssd1322
+    from luma.core.interface.serial import i2c
     from PIL import Image, ImageDraw, ImageFont
-    SSD1322_AVAILABLE = True
+    LUMA_AVAILABLE = True
 except ImportError:
-    SSD1322_AVAILABLE = False
-    logging.warning("Adafruit SSD1322 library not available. Using mock display.")
+    LUMA_AVAILABLE = False
+    logging.warning("Luma OLED library not available. Using mock display.")
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -34,8 +32,8 @@ class OLED_Display:
 
     def _initialize(self) -> bool:
         """Initialize the SSD1322 OLED display"""
-        if not SSD1322_AVAILABLE:
-            logger.warning("SSD1322 library not available - using mock display")
+        if not LUMA_AVAILABLE:
+            logger.warning("Luma OLED library not available - using mock display")
             return False
 
         try:
@@ -45,19 +43,11 @@ class OLED_Display:
                 logger.error("SSD1322 display not detected on I2C bus")
                 return False
 
-            # Initialize I2C bus
-            i2c = busio.I2C(board.SCL, board.SDA)
-
-            # Initialize reset pin
-            reset = digitalio.DigitalInOut(getattr(board, f'D{self.reset_pin}'))
-            reset.direction = digitalio.Direction.OUTPUT
+            # Initialize I2C interface
+            serial = i2c(port=1, address=ssd1322_addr)
 
             # Initialize SSD1322 display
-            self.display = adafruit_ssd1322.SSD1322_I2C(
-                self.width, self.height, i2c,
-                addr=ssd1322_addr,
-                reset=reset
-            )
+            self.display = ssd1322(serial, width=self.width, height=self.height)
 
             # Clear display
             self.clear()
@@ -77,11 +67,14 @@ class OLED_Display:
 
         try:
             # Create image for drawing
-            image = Image.new("1", (self.width, self.height))
+            image = Image.new("RGB", (self.width, self.height), "black")
             draw = ImageDraw.Draw(image)
 
-            # Use default font
-            font = ImageFont.load_default()
+            # Try to use a better font, fallback to default
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+            except:
+                font = ImageFont.load_default()
 
             # Format reading
             text = f"{sensor_type.upper()}: {value:.1f} {unit}"
@@ -94,11 +87,10 @@ class OLED_Display:
             x = (self.width - text_width) // 2
             y = (self.height - text_height) // 2
 
-            draw.text((x, y), text, font=font, fill=255)
+            draw.text((x, y), text, font=font, fill="white")
 
             # Display image
-            self.display.image(image)
-            self.display.show()
+            self.display.display(image)
 
         except Exception as e:
             logger.error(f"Error displaying reading: {e}")
@@ -111,22 +103,24 @@ class OLED_Display:
 
         try:
             # Create image for drawing
-            image = Image.new("1", (self.width, self.height))
+            image = Image.new("RGB", (self.width, self.height), "black")
             draw = ImageDraw.Draw(image)
 
-            # Use default font
-            font = ImageFont.load_default()
+            # Try to use a better font, fallback to default
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+            except:
+                font = ImageFont.load_default()
 
             # Calculate line position
-            line_height = 12
+            line_height = 14
             y = line * line_height + 2
 
             # Draw text
-            draw.text((2, y), message, font=font, fill=255)
+            draw.text((2, y), message, font=font, fill="white")
 
             # Display image
-            self.display.image(image)
-            self.display.show()
+            self.display.display(image)
 
         except Exception as e:
             logger.error(f"Error displaying message: {e}")
@@ -154,15 +148,18 @@ class OLED_Display:
 
         try:
             # Create image for drawing
-            image = Image.new("1", (self.width, self.height))
+            image = Image.new("RGB", (self.width, self.height), "black")
             draw = ImageDraw.Draw(image)
 
-            # Use default font
-            font = ImageFont.load_default()
+            # Try to use a better font, fallback to default
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+            except:
+                font = ImageFont.load_default()
 
             status = "Air Quality:"
             y = 2
-            draw.text((2, y), status, font=font, fill=255)
+            draw.text((2, y), status, font=font, fill="white")
 
             y += 15
             if pm25 is not None:
@@ -173,7 +170,7 @@ class OLED_Display:
                     pm25_status += "MODERATE"
                 else:
                     pm25_status += "GOOD"
-                draw.text((2, y), pm25_status, font=font, fill=255)
+                draw.text((2, y), pm25_status, font=font, fill="white")
                 y += 12
 
             if co2 is not None:
@@ -184,11 +181,10 @@ class OLED_Display:
                     co2_status += "MODERATE"
                 else:
                     co2_status += "GOOD"
-                draw.text((2, y), co2_status, font=font, fill=255)
+                draw.text((2, y), co2_status, font=font, fill="white")
 
             # Display image
-            self.display.image(image)
-            self.display.show()
+            self.display.display(image)
 
         except Exception as e:
             logger.error(f"Error displaying air quality status: {e}")
@@ -201,9 +197,8 @@ class OLED_Display:
 
         try:
             # Create blank image
-            image = Image.new("1", (self.width, self.height))
-            self.display.image(image)
-            self.display.show()
+            image = Image.new("RGB", (self.width, self.height), "black")
+            self.display.display(image)
         except Exception as e:
             logger.error(f"Error clearing display: {e}")
 
@@ -230,6 +225,6 @@ class OLED_Display:
             "initialized": self.initialized,
             "width": self.width,
             "height": self.height,
-            "available": SSD1322_AVAILABLE,
+            "available": LUMA_AVAILABLE,
             "address": get_ssd1322_address()
         }
