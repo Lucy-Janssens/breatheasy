@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  api:
+    image: ghcr.io/YOUR_USERNAME/breatheasy-api:latest
+    container_name: breatheasy-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data  # Persist database
+      - /sys:/sys:ro      # For GPIO access
+    devices:
+      - /dev/gpiomem:/dev/gpiomem  # GPIO access
+      - /dev/i2c-1:/dev/i2c-1      # I2C for sensors/display
+    privileged: true  # Required for GPIO
+    environment:
+      - DATABASE_URL=sqlite:///./data/breatheasy.db
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  client:
+    image: ghcr.io/YOUR_USERNAME/breatheasy-client:latest
+    container_name: breatheasy-client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.docker/config.json:/config.json:ro
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=300  # Check every 5 minutes
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+    command: breatheasy-api breatheasy-client

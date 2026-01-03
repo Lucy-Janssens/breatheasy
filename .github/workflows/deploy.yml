@@ -1,0 +1,95 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_API: ${{ github.repository }}-api
+  IMAGE_NAME_CLIENT: ${{ github.repository }}-client
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for API
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          platforms: linux/arm64,linux/arm/v7  # For Raspberry Pi
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Client
+        id: meta-client
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_CLIENT }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Client image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./client
+          platforms: linux/arm64,linux/arm/v7  # For Raspberry Pi
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-client.outputs.tags }}
+          labels: ${{ steps.meta-client.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trigger Raspberry Pi Update
+        if: github.event_name != 'pull_request'
+        run: |
+          if [ ! -z "${{ secrets.WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.WEBHOOK_URL }} \
+              -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d '{"action": "update", "repository": "${{ github.repository }}", "sha": "${{ github.sha }}"}' \
+              --max-time 30 \
+              --retry 3 \
+              --retry-delay 5
+          fi

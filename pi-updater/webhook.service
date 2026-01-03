@@ -1,0 +1,22 @@
+[Unit]
+Description=Breatheasy Webhook Update Service
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/breatheasy
+ExecStart=/home/pi/breatheasy/pi-updater/venv/bin/python /home/pi/breatheasy/pi-updater/webhook-server.py
+Restart=always
+RestartSec=10
+Environment="WEBHOOK_SECRET=YOUR_WEBHOOK_SECRET_HERE"
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/home/pi/breatheasy
+
+[Install]
+WantedBy=multi-user.target
