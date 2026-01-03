@@ -24,11 +24,12 @@ class OLED_Display:
     def __init__(self, reset_pin: int = 24):
         self.reset_pin = reset_pin
         self.display = None
-        self.initialized = self._initialize()
 
-        # Display properties
+        # Display properties (set before initialization)
         self.width = 256
         self.height = 64
+
+        self.initialized = self._initialize()
 
     def _initialize(self) -> bool:
         """Initialize the SSD1322 OLED display"""
