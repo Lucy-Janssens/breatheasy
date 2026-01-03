@@ -84,6 +84,7 @@ log "Making scripts executable..."
 chmod +x pi-updater/auto-update.sh
 chmod +x pi-updater/install.sh
 chmod +x pi-updater/test_sensors.py
+chmod +x pi-updater/display_temp.py
 
 # Set up webhook service (optional)
 read -p "Do you want to set up webhook-based updates? (y/n): " -n 1 -r
@@ -149,7 +150,8 @@ log "1. Edit .env file with your configuration"
 log "2. Access the application at http://localhost:3000"
 log "3. Check logs with: docker compose logs -f"
 log "4. Test sensors with: python3 pi-updater/test_sensors.py"
-log "5. If using webhook updates, start the service with: sudo systemctl start breatheasy-webhook"
+log "5. Display temperature with: python3 pi-updater/display_temp.py"
+log "6. If using webhook updates, start the service with: sudo systemctl start breatheasy-webhook"
 
 # Print service status
 log ""

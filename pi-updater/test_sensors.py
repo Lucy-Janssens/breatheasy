@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'api'))
 
 from app.hardware.sensor_detection import detect_sensors, SensorDetector
-from app.hardware import air_quality, temperature, oled_display
+from app.hardware import air_quality, temperature, oled_display, motion_sensor
 
 def test_sensor_detection():
     """Test sensor detection"""
@@ -96,6 +96,32 @@ def test_oled_display():
         print(f"❌ Display test failed: {e}")
         return False
 
+def test_motion_sensor():
+    """Test motion sensor"""
+    print("\n🚶 Testing motion sensor...")
+
+    motion = motion_sensor.MotionSensor(pin=4)  # GPIO 4 (physical pin 7)
+    if not motion.initialized:
+        print("❌ Motion sensor initialization failed")
+        return False
+
+    print("✅ Motion sensor initialized")
+
+    # Test motion detection
+    try:
+        # Test reading
+        motion_detected = motion.detect_motion()
+        print(f"✅ Motion detection works - Current state: {motion_detected}")
+
+        # Get status
+        status = motion.get_status()
+        print(f"✅ Status query works - GPIO pin: {status['pin']}")
+
+        return True
+    except Exception as e:
+        print(f"❌ Motion sensor test failed: {e}")
+        return False
+
 def main():
     """Main test function"""
     print("🧪 Breatheasy Sensor Test")
@@ -106,6 +132,7 @@ def main():
         ("BME680 Sensor", test_bme680),
         ("Temperature/Humidity", test_temperature),
         ("OLED Display", test_oled_display),
+        ("Motion Sensor", test_motion_sensor),
     ]
 
     results = []
