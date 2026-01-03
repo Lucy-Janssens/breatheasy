@@ -3,9 +3,15 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Install build dependencies
+RUN apk add --no-cache git
+
 # Copy package files
 COPY package*.json ./
-RUN npm ci
+
+# Clean npm cache and install dependencies
+RUN npm cache clean --force && \
+    npm install --no-audit --no-fund
 
 # Copy source code
 COPY . .
