@@ -1,6 +1,9 @@
 services:
   api:
-    image: ghcr.io/YOUR_USERNAME/breatheasy-api:latest
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: breatheasy-api:latest
     container_name: breatheasy-api
     restart: unless-stopped
     ports:
@@ -28,7 +31,10 @@ services:
       - mqtt
 
   client:
-    image: ghcr.io/YOUR_USERNAME/breatheasy-client:latest
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    image: breatheasy-client:latest
     container_name: breatheasy-client
     restart: unless-stopped
     ports:
