@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   api:
     image: ghcr.io/YOUR_USERNAME/breatheasy-api:latest
@@ -58,12 +56,11 @@ services:
     container_name: homeassistant
     restart: unless-stopped
     ports:
-      - "8123:8123"
+      - "0.0.0.0:8123:8123"  # Bind to all interfaces for network access
     volumes:
       - ./homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
     privileged: true
-    network_mode: host
     depends_on:
       - mqtt
 

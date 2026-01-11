@@ -10,9 +10,15 @@ mqtt:
   discovery: true
   discovery_prefix: homeassistant
 
-# HTTP Configuration
+# HTTP Configuration - Allow network access
 http:
   server_port: 8123
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - ::1
+  # Allow connections from all IPs on the network
+  ip_ban_enabled: false
 
 # Logger Configuration
 logger:
