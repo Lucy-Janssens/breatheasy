@@ -5,11 +5,13 @@ from sqlalchemy import select
 from ..models import Sensor, SensorReading
 from ..schemas import SensorCreate, SensorUpdate, SensorReadingCreate
 from ..hardware import air_quality, temperature
+from ..integrations.mqtt_publisher import get_mqtt_publisher
 
 
 class SensorService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.mqtt_publisher = get_mqtt_publisher()
 
     async def get_all_sensors(self) -> List[Sensor]:
         """Get all sensors"""
@@ -76,6 +78,8 @@ class SensorService:
                     unit="°C"
                 ))
                 readings.append(reading)
+                # Publish to MQTT
+                self.mqtt_publisher.publish_sensor_reading("temperature", temp)
 
             if humidity is not None:
                 reading = await self.record_reading(SensorReadingCreate(
@@ -85,6 +89,8 @@ class SensorService:
                     unit="%"
                 ))
                 readings.append(reading)
+                # Publish to MQTT
+                self.mqtt_publisher.publish_sensor_reading("humidity", humidity)
 
             # Poll air quality sensor
             pm25, pm10, co2, voc = air_quality.read_air_quality()
@@ -96,6 +102,8 @@ class SensorService:
                     unit="µg/m³"
                 ))
                 readings.append(reading)
+                # Publish to MQTT
+                self.mqtt_publisher.publish_sensor_reading("pm25", pm25)
 
             if pm10 is not None:
                 reading = await self.record_reading(SensorReadingCreate(
@@ -105,6 +113,8 @@ class SensorService:
                     unit="µg/m³"
                 ))
                 readings.append(reading)
+                # Publish to MQTT
+                self.mqtt_publisher.publish_sensor_reading("pm10", pm10)
 
             if co2 is not None:
                 reading = await self.record_reading(SensorReadingCreate(
@@ -114,6 +124,8 @@ class SensorService:
                     unit="ppm"
                 ))
                 readings.append(reading)
+                # Publish to MQTT
+                self.mqtt_publisher.publish_sensor_reading("co2", co2)
 
             if voc is not None:
                 reading = await self.record_reading(SensorReadingCreate(
@@ -123,6 +135,8 @@ class SensorService:
                     unit="ppb"
                 ))
                 readings.append(reading)
+                # Publish to MQTT
+                self.mqtt_publisher.publish_sensor_reading("voc", voc)
 
         except Exception as e:
             print(f"Error polling sensors: {e}")

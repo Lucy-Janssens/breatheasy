@@ -1,0 +1,42 @@
+# Home Assistant Configuration for BreatheEasy
+
+# Configure Home Assistant basics
+default_config:
+
+# MQTT Integration with Discovery
+mqtt:
+  broker: localhost
+  port: 1883
+  discovery: true
+  discovery_prefix: homeassistant
+
+# HTTP Configuration
+http:
+  server_port: 8123
+
+# Logger Configuration
+logger:
+  default: info
+  logs:
+    homeassistant.components.mqtt: debug
+
+# Recorder - Store history in database
+recorder:
+  purge_keep_days: 7
+  db_url: sqlite:////config/home-assistant_v2.db
+
+# History - Enable history tracking
+history:
+
+# Logbook - Enable logbook
+logbook:
+
+# Enable the configuration UI
+config:
+
+# Enable system health checks
+system_health:
+
+# Enable mobile app support
+mobile_app:
+

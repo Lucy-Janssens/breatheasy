@@ -26,6 +26,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    depends_on:
+      - mqtt
 
   client:
     image: ghcr.io/YOUR_USERNAME/breatheasy-client:latest
@@ -38,6 +40,32 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: breatheasy-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+    privileged: true
+    network_mode: host
+    depends_on:
+      - mqtt
 
   watchtower:
     image: containrrr/watchtower
