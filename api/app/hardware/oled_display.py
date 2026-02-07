@@ -1,6 +1,6 @@
 """
 OLED Display Driver
-Controls an SSD1322 256×64 OLED display over I2C.
+Controls an SSD1306 128×64 OLED display over I2C (Whadda WPI438).
 Supports auto-sleep after a configurable timeout and wake-on-motion.
 """
 
@@ -11,7 +11,7 @@ import time
 logger = logging.getLogger(__name__)
 
 try:
-    from luma.oled.device import ssd1322
+    from luma.oled.device import ssd1306
     from luma.core.interface.serial import i2c as luma_i2c
     from luma.core.render import canvas
     from PIL import ImageFont
@@ -22,9 +22,9 @@ except ImportError:
 
 
 class OLEDDisplay:
-    """Driver for an SSD1322 OLED (256×64) via I2C."""
+    """Driver for an SSD1306 OLED (128×64) via I2C."""
 
-    WIDTH = 256
+    WIDTH = 128
     HEIGHT = 64
 
     def __init__(self, i2c_address: int = 0x3C, timeout: int = 60) -> None:
@@ -50,22 +50,27 @@ class OLEDDisplay:
 
         try:
             serial = luma_i2c(port=1, address=self._address)
-            self._device = ssd1322(serial, width=self.WIDTH, height=self.HEIGHT)
+            self._device = ssd1306(serial, width=self.WIDTH, height=self.HEIGHT)
+            
+            # Force display on with max contrast
+            self._device.show()
+            self._device.contrast(255)
+            
             self._load_fonts()
             self._initialized = True
             self._is_on = True
             self._last_activity = time.time()
-            logger.info(f"SSD1322 OLED initialised at 0x{self._address:02X}")
+            logger.info(f"SSD1306 OLED initialised at 0x{self._address:02X}")
         except Exception as exc:
             logger.error(f"OLED init failed: {exc}")
 
     def _load_fonts(self) -> None:
         try:
             self._font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 11
             )
             self._font_small = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 9
             )
         except Exception:
             self._font = ImageFont.load_default()
@@ -151,23 +156,30 @@ class OLEDDisplay:
 
         try:
             with canvas(self._device) as draw:
+                # Title
                 draw.text((2, 0), "BreatheEasy", font=self._font, fill="white")
-                draw.line([(0, 16), (self.WIDTH, 16)], fill="white")
+                draw.line([(0, 14), (self.WIDTH, 14)], fill="white")
+                
+                # Line 1: Temp & Humidity
                 draw.text(
-                    (2, 20),
-                    f"Temp: {temp_s}\u00b0C   Hum: {hum_s}%",
+                    (2, 18),
+                    f"T:{temp_s}\u00b0C H:{hum_s}%",
                     font=self._font_small,
                     fill="white",
                 )
+                
+                # Line 2: Pressure
                 draw.text(
-                    (2, 35),
-                    f"Pressure: {pres_s} hPa",
+                    (2, 32),
+                    f"P:{pres_s} hPa",
                     font=self._font_small,
                     fill="white",
                 )
+                
+                # Line 3: Air Quality
                 draw.text(
-                    (2, 50),
-                    f"Air: {aq_s}",
+                    (2, 46),
+                    f"AQ: {aq_s}",
                     font=self._font_small,
                     fill="white",
                 )
