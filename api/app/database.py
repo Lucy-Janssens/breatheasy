@@ -1,3 +1,8 @@
+"""
+Database configuration – async SQLAlchemy with SQLite.
+Database file is stored at /app/data/breatheasy.db (persisted via Docker volume).
+"""
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from .config import settings
@@ -25,6 +30,7 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncSession:
+    """FastAPI dependency – yields an async session."""
     async with async_session() as session:
         try:
             yield session
@@ -32,6 +38,7 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
-async def create_tables():
+async def create_tables() -> None:
+    """Create all tables defined in the ORM."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

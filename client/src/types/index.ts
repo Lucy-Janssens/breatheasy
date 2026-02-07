@@ -1,19 +1,18 @@
-export interface SensorReading {
-  id: number
-  sensor_type: string
-  value: number
-  unit: string
-  timestamp: string
-  sensor_id?: string
-}
+// Re-export everything from sensors for backward compatibility
+export * from './sensors'
 
+// Legacy types kept for existing components that import from here
 export interface Sensor {
   id: string
   name: string
   type: string
   location: string
   is_active: boolean
-  last_reading?: SensorReading
+  last_reading?: {
+    value: number
+    unit: string
+    timestamp: string
+  }
 }
 
 export interface AirQualityData {

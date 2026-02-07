@@ -3,13 +3,6 @@
 # Configure Home Assistant basics
 default_config:
 
-# MQTT Integration with Discovery
-mqtt:
-  broker: localhost
-  port: 1883
-  discovery: true
-  discovery_prefix: homeassistant
-
 # HTTP Configuration - Allow network access
 http:
   server_port: 8123

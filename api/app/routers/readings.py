@@ -1,64 +1,91 @@
+"""
+/api/readings – historical data and statistical aggregations.
+"""
+
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, desc, func as sqlfunc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from datetime import datetime, timedelta
+
 from ..database import get_db
 from ..models import SensorReading
-from ..schemas import SensorReading as SensorReadingSchema
 
 router = APIRouter()
 
 
-@router.get("/latest", response_model=list[SensorReadingSchema])
-async def get_latest_readings(db: AsyncSession = Depends(get_db)):
-    """Get the latest reading for each sensor type"""
-    # This is a simplified implementation - in production you'd want to get the latest per sensor
-    result = await db.execute(
-        select(SensorReading)
-        .order_by(desc(SensorReading.timestamp))
-        .limit(100)  # Get recent readings and filter in memory
-    )
-    readings = result.scalars().all()
-
-    # Group by sensor_type and get the most recent for each
-    latest_by_type = {}
-    for reading in readings:
-        if reading.sensor_type not in latest_by_type:
-            latest_by_type[reading.sensor_type] = reading
-        elif reading.timestamp > latest_by_type[reading.sensor_type].timestamp:
-            latest_by_type[reading.sensor_type] = reading
-
-    return list(latest_by_type.values())
-
-
-@router.get("/sensor/{sensor_id}", response_model=list[SensorReadingSchema])
-async def get_sensor_readings(
-    sensor_id: str,
-    limit: int = Query(100, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get readings for a specific sensor"""
-    result = await db.execute(
-        select(SensorReading)
-        .where(SensorReading.sensor_id == sensor_id)
-        .order_by(desc(SensorReading.timestamp))
-        .limit(limit)
-    )
-    readings = result.scalars().all()
-    return readings
-
-
-@router.get("/history", response_model=list[SensorReadingSchema])
+@router.get("/history")
 async def get_readings_history(
-    hours: int = Query(24, ge=1, le=168),  # 1 hour to 1 week
-    db: AsyncSession = Depends(get_db)
+    sensor_type: Optional[str] = Query(None, description="e.g. bme680, dht22, motion"),
+    metric: Optional[str] = Query(None, description="e.g. temperature, humidity"),
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get readings from the last N hours"""
-    since = datetime.utcnow() - timedelta(hours=hours)
-    result = await db.execute(
-        select(SensorReading)
+    """Return historical sensor readings with optional filters."""
+    query = select(SensorReading).order_by(desc(SensorReading.timestamp))
+
+    if sensor_type:
+        query = query.where(SensorReading.sensor_type == sensor_type)
+    if metric:
+        query = query.where(SensorReading.metric == metric)
+    if start_time:
+        query = query.where(SensorReading.timestamp >= start_time)
+    if end_time:
+        query = query.where(SensorReading.timestamp <= end_time)
+
+    query = query.limit(limit)
+    result = await db.execute(query)
+    rows = result.scalars().all()
+
+    return [
+        {
+            "id": r.id,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "sensor_type": r.sensor_type,
+            "metric": r.metric,
+            "value": r.value,
+            "unit": r.unit,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/stats")
+async def get_readings_stats(
+    metric: str = Query(..., description="e.g. temperature, humidity, air_quality_score"),
+    timeframe: str = Query("24h", description="1h, 24h, or 7d"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return min / max / avg for a given metric over a timeframe."""
+    now = datetime.now(timezone.utc)
+    delta_map = {"1h": timedelta(hours=1), "24h": timedelta(hours=24), "7d": timedelta(days=7)}
+    delta = delta_map.get(timeframe, timedelta(hours=24))
+    since = now - delta
+
+    query = (
+        select(
+            sqlfunc.min(SensorReading.value).label("min"),
+            sqlfunc.max(SensorReading.value).label("max"),
+            sqlfunc.avg(SensorReading.value).label("avg"),
+            sqlfunc.count(SensorReading.id).label("count"),
+        )
+        .where(SensorReading.metric == metric)
         .where(SensorReading.timestamp >= since)
-        .order_by(desc(SensorReading.timestamp))
     )
-    readings = result.scalars().all()
-    return readings
+
+    result = await db.execute(query)
+    row = result.one_or_none()
+
+    if row is None or row.count == 0:
+        return {"min": None, "max": None, "avg": None, "count": 0, "timeframe": timeframe}
+
+    return {
+        "min": round(row.min, 2) if row.min is not None else None,
+        "max": round(row.max, 2) if row.max is not None else None,
+        "avg": round(row.avg, 2) if row.avg is not None else None,
+        "count": row.count,
+        "timeframe": timeframe,
+    }

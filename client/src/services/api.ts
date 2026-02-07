@@ -1,44 +1,39 @@
 import axios from 'axios'
-import { SensorReading, Sensor, AirQualityData, SystemStatus } from '../types'
+import type { SensorReading, SensorHealth, HistoryReading, ReadingStats } from '../types/sensors'
 
 const api = axios.create({
   baseURL: '/api',
   timeout: 10000,
 })
 
-// Add response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error)
     return Promise.reject(error)
-  }
+  },
 )
 
-export const sensorsApi = {
-  getAllSensors: () => api.get<Sensor[]>('/sensors'),
-  getSensor: (id: string) => api.get<Sensor>(`/sensors/${id}`),
-  updateSensor: (id: string, data: Partial<Sensor>) =>
-    api.put<Sensor>(`/sensors/${id}`, data),
+export const sensorApi = {
+  getCurrentReadings: () =>
+    api.get<SensorReading>('/sensors/current'),
+
+  getHealth: () =>
+    api.get<SensorHealth>('/sensors/health'),
 }
 
 export const readingsApi = {
-  getLatestReadings: () => api.get<SensorReading[]>('/readings/latest'),
-  getReadingsBySensor: (sensorId: string, limit = 100) =>
-    api.get<SensorReading[]>(`/readings/sensor/${sensorId}?limit=${limit}`),
-  getReadingsHistory: (hours = 24) =>
-    api.get<SensorReading[]>(`/readings/history?hours=${hours}`),
-}
+  getHistory: (params?: {
+    sensor_type?: string
+    metric?: string
+    start_time?: string
+    end_time?: string
+    limit?: number
+  }) =>
+    api.get<HistoryReading[]>('/readings/history', { params }),
 
-export const airQualityApi = {
-  getCurrentData: () => api.get<AirQualityData>('/air-quality/current'),
-  getHistoryData: (hours = 24) =>
-    api.get<AirQualityData[]>(`/air-quality/history?hours=${hours}`),
-}
-
-export const systemApi = {
-  getStatus: () => api.get<SystemStatus>('/system/status'),
-  restart: () => api.post('/system/restart'),
+  getStats: (metric: string, timeframe: string = '24h') =>
+    api.get<ReadingStats>('/readings/stats', { params: { metric, timeframe } }),
 }
 
 export default api

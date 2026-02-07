@@ -1,242 +1,209 @@
 """
-OLED Display Interface
-This module provides functions to control an SSD1322 OLED display.
+OLED Display Driver
+Controls an SSD1322 256×64 OLED display over I2C.
+Supports auto-sleep after a configurable timeout and wake-on-motion.
 """
 
-from typing import Optional
-import time
+from typing import Dict, Optional
 import logging
-from .sensor_detection import get_ssd1322_address
+import time
+
+logger = logging.getLogger(__name__)
 
 try:
     from luma.oled.device import ssd1322
-    from luma.core.interface.serial import i2c
-    from PIL import Image, ImageDraw, ImageFont
+    from luma.core.interface.serial import i2c as luma_i2c
+    from luma.core.render import canvas
+    from PIL import ImageFont
     LUMA_AVAILABLE = True
 except ImportError:
     LUMA_AVAILABLE = False
-    logging.warning("Luma OLED library not available. Using mock display.")
+    logger.warning("luma.oled not available – mock display enabled")
 
-# Configure logging
-logger = logging.getLogger(__name__)
 
-class OLED_Display:
-    def __init__(self, reset_pin: int = 24):
-        self.reset_pin = reset_pin
-        self.display = None
+class OLEDDisplay:
+    """Driver for an SSD1322 OLED (256×64) via I2C."""
 
-        # Display properties (set before initialization)
-        self.width = 256
-        self.height = 64
+    WIDTH = 256
+    HEIGHT = 64
 
-        self.initialized = self._initialize()
+    def __init__(self, i2c_address: int = 0x3C, timeout: int = 60) -> None:
+        self._address = i2c_address
+        self._timeout = timeout  # seconds before auto-sleep
+        self._device: Optional[object] = None
+        self._initialized = False
+        self._is_on = False
+        self._last_activity: float = time.time()
 
-    def _initialize(self) -> bool:
-        """Initialize the SSD1322 OLED display"""
+        self._font = None
+        self._font_small = None
+        self._initialize()
+
+    # ------------------------------------------------------------------
+    # Initialization
+    # ------------------------------------------------------------------
+
+    def _initialize(self) -> None:
         if not LUMA_AVAILABLE:
-            logger.warning("Luma OLED library not available - using mock display")
-            return False
+            logger.info("OLED display running in mock mode")
+            return
 
         try:
-            # First try manual address (0x27) since auto-detection might fail
-            ssd1322_addr = 0x27  # Known working address from i2cdetect
+            serial = luma_i2c(port=1, address=self._address)
+            self._device = ssd1322(serial, width=self.WIDTH, height=self.HEIGHT)
+            self._load_fonts()
+            self._initialized = True
+            self._is_on = True
+            self._last_activity = time.time()
+            logger.info(f"SSD1322 OLED initialised at 0x{self._address:02X}")
+        except Exception as exc:
+            logger.error(f"OLED init failed: {exc}")
 
-            logger.info(f"Trying to initialize SSD1322 at address 0x{ssd1322_addr:02X}")
+    def _load_fonts(self) -> None:
+        try:
+            self._font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14
+            )
+            self._font_small = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12
+            )
+        except Exception:
+            self._font = ImageFont.load_default()
+            self._font_small = self._font
 
-            # Initialize I2C interface
-            serial = i2c(port=1, address=ssd1322_addr)
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
-            # Initialize SSD1322 display
-            self.display = ssd1322(serial, width=self.width, height=self.height)
-
-            # Test display by clearing it
-            self.clear()
-
-            logger.info(f"SSD1322 display initialized at address 0x{ssd1322_addr:02X}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error initializing SSD1322 display: {e}")
-            # Fallback to auto-detection if manual fails
+    def wake(self) -> None:
+        """Turn the display on and reset the activity timer."""
+        if self._initialized and not self._is_on:
             try:
-                ssd1322_addr = get_ssd1322_address()
-                if ssd1322_addr and ssd1322_addr != 0x27:
-                    logger.info(f"Trying auto-detected address 0x{ssd1322_addr:02X}")
-                    serial = i2c(port=1, address=ssd1322_addr)
-                    self.display = ssd1322(serial, width=self.width, height=self.height)
-                    self.clear()
-                    logger.info(f"SSD1322 display initialized at auto-detected address 0x{ssd1322_addr:02X}")
-                    return True
-            except Exception as e2:
-                logger.error(f"Auto-detection also failed: {e2}")
-            return False
+                self._device.show()
+            except Exception as exc:
+                logger.error(f"OLED wake error: {exc}")
+        self._is_on = True
+        self._last_activity = time.time()
+        logger.debug("OLED display woken")
 
-    def display_reading(self, sensor_type: str, value: float, unit: str):
-        """Display a sensor reading on the screen"""
-        if not self.initialized:
-            self._mock_display(f"{sensor_type.upper()}: {value:.1f} {unit}")
-            return
-
-        try:
-            # Create image for drawing
-            image = Image.new("RGB", (self.width, self.height), "black")
-            draw = ImageDraw.Draw(image)
-
-            # Try to use a better font, fallback to default
+    def sleep(self) -> None:
+        """Turn the display off."""
+        if self._initialized and self._is_on:
             try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-            except:
-                font = ImageFont.load_default()
+                self._device.hide()
+            except Exception as exc:
+                logger.error(f"OLED sleep error: {exc}")
+        self._is_on = False
+        logger.debug("OLED display sleeping")
 
-            # Format reading
-            text = f"{sensor_type.upper()}: {value:.1f} {unit}"
+    def should_sleep(self) -> bool:
+        """Return True when the display has been idle longer than the timeout."""
+        return (time.time() - self._last_activity) >= self._timeout
 
-            # Draw text centered
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
+    def display_sensor_data(self, data: Dict) -> None:
+        """
+        Render sensor data on the OLED.
 
-            x = (self.width - text_width) // 2
-            y = (self.height - text_height) // 2
+        Expected *data* layout::
 
-            draw.text((x, y), text, font=font, fill="white")
+            {
+                'sensors': {
+                    'bme680': {'temperature': 22.5, 'humidity': 45, 'pressure': 1013, 'air_quality_score': 75},
+                    ...
+                }
+            }
 
-            # Display image
-            self.display.display(image)
+        Display layout::
 
-        except Exception as e:
-            logger.error(f"Error displaying reading: {e}")
+            BreatheEasy
+            ────────────────────────
+            Temp: 22.5°C   Hum: 45%
+            Pressure: 1013 hPa
+            Air: Good (75)
+        """
+        if not self._is_on:
+            return
 
-    def display_message(self, message: str, line: int = 0):
-        """Display a custom message"""
-        if not self.initialized:
-            self._mock_display(f"Line {line}: {message}")
+        self._last_activity = time.time()
+
+        sensors = data.get("sensors", {})
+        bme = sensors.get("bme680", {})
+
+        temp = bme.get("temperature")
+        hum = bme.get("humidity")
+        pres = bme.get("pressure")
+        aq = bme.get("air_quality_score")
+
+        temp_s = f"{temp:.1f}" if temp is not None else "--.-"
+        hum_s = f"{hum:.0f}" if hum is not None else "--"
+        pres_s = f"{pres:.0f}" if pres is not None else "----"
+        aq_label = self._aq_label(aq)
+        aq_s = f"{aq_label} ({aq:.0f})" if aq is not None else "N/A"
+
+        if not self._initialized:
+            logger.debug(
+                f"Mock OLED | T:{temp_s}°C  H:{hum_s}%  P:{pres_s}hPa  AQ:{aq_s}"
+            )
             return
 
         try:
-            # Create image for drawing
-            image = Image.new("RGB", (self.width, self.height), "black")
-            draw = ImageDraw.Draw(image)
+            with canvas(self._device) as draw:
+                draw.text((2, 0), "BreatheEasy", font=self._font, fill="white")
+                draw.line([(0, 16), (self.WIDTH, 16)], fill="white")
+                draw.text(
+                    (2, 20),
+                    f"Temp: {temp_s}\u00b0C   Hum: {hum_s}%",
+                    font=self._font_small,
+                    fill="white",
+                )
+                draw.text(
+                    (2, 35),
+                    f"Pressure: {pres_s} hPa",
+                    font=self._font_small,
+                    fill="white",
+                )
+                draw.text(
+                    (2, 50),
+                    f"Air: {aq_s}",
+                    font=self._font_small,
+                    fill="white",
+                )
+        except Exception as exc:
+            logger.error(f"OLED render error: {exc}")
 
-            # Try to use a better font, fallback to default
-            try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
-            except:
-                font = ImageFont.load_default()
+    def display_message(self, msg: str) -> None:
+        """Show a single text message centred on the display."""
+        self._last_activity = time.time()
 
-            # Calculate line position
-            line_height = 14
-            y = line * line_height + 2
-
-            # Draw text
-            draw.text((2, y), message, font=font, fill="white")
-
-            # Display image
-            self.display.display(image)
-
-        except Exception as e:
-            logger.error(f"Error displaying message: {e}")
-
-    def display_air_quality_status(self, pm25: Optional[float], co2: Optional[float]):
-        """Display air quality status"""
-        if not self.initialized:
-            status = "Air Quality: "
-            if pm25 is not None:
-                if pm25 > 35:
-                    status += "PM2.5 POOR "
-                elif pm25 > 12:
-                    status += "PM2.5 MODERATE "
-                else:
-                    status += "PM2.5 GOOD "
-            if co2 is not None:
-                if co2 > 1000:
-                    status += "CO2 POOR"
-                elif co2 > 800:
-                    status += "CO2 MODERATE"
-                else:
-                    status += "CO2 GOOD"
-            self._mock_display(status)
+        if not self._initialized:
+            logger.debug(f"Mock OLED message: {msg}")
             return
 
         try:
-            # Create image for drawing
-            image = Image.new("RGB", (self.width, self.height), "black")
-            draw = ImageDraw.Draw(image)
+            with canvas(self._device) as draw:
+                bbox = draw.textbbox((0, 0), msg, font=self._font)
+                w = bbox[2] - bbox[0]
+                h = bbox[3] - bbox[1]
+                x = (self.WIDTH - w) // 2
+                y = (self.HEIGHT - h) // 2
+                draw.text((x, y), msg, font=self._font, fill="white")
+        except Exception as exc:
+            logger.error(f"OLED message error: {exc}")
 
-            # Try to use a better font, fallback to default
-            try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
-            except:
-                font = ImageFont.load_default()
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
-            status = "Air Quality:"
-            y = 2
-            draw.text((2, y), status, font=font, fill="white")
-
-            y += 15
-            if pm25 is not None:
-                pm25_status = "PM2.5: "
-                if pm25 > 35:
-                    pm25_status += "POOR"
-                elif pm25 > 12:
-                    pm25_status += "MODERATE"
-                else:
-                    pm25_status += "GOOD"
-                draw.text((2, y), pm25_status, font=font, fill="white")
-                y += 12
-
-            if co2 is not None:
-                co2_status = "CO2: "
-                if co2 > 1000:
-                    co2_status += "POOR"
-                elif co2 > 800:
-                    co2_status += "MODERATE"
-                else:
-                    co2_status += "GOOD"
-                draw.text((2, y), co2_status, font=font, fill="white")
-
-            # Display image
-            self.display.display(image)
-
-        except Exception as e:
-            logger.error(f"Error displaying air quality status: {e}")
-
-    def clear(self):
-        """Clear the display"""
-        if not self.initialized:
-            self._mock_display("Display cleared")
-            return
-
-        try:
-            # Create blank image
-            image = Image.new("RGB", (self.width, self.height), "black")
-            self.display.display(image)
-        except Exception as e:
-            logger.error(f"Error clearing display: {e}")
-
-    def set_brightness(self, level: int):
-        """Set display brightness (0-255)"""
-        if not self.initialized:
-            self._mock_display(f"Brightness set to {level}")
-            return
-
-        try:
-            # SSD1322 doesn't have direct brightness control
-            # This could be implemented with contrast settings if supported
-            logger.info(f"Brightness control not implemented for SSD1322 (requested: {level})")
-        except Exception as e:
-            logger.error(f"Error setting brightness: {e}")
-
-    def _mock_display(self, message: str):
-        """Mock display output when hardware is not available"""
-        print(f"OLED Display: {message}")
-
-    def get_display_info(self) -> dict:
-        """Get display information"""
-        return {
-            "initialized": self.initialized,
-            "width": self.width,
-            "height": self.height,
-            "available": LUMA_AVAILABLE,
-            "address": get_ssd1322_address()
-        }
+    @staticmethod
+    def _aq_label(score: Optional[float]) -> str:
+        if score is None:
+            return "N/A"
+        if score >= 80:
+            return "Excellent"
+        if score >= 60:
+            return "Good"
+        if score >= 40:
+            return "Moderate"
+        if score >= 20:
+            return "Poor"
+        return "Very Poor"

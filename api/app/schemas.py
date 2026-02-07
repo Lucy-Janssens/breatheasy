@@ -1,78 +1,53 @@
+"""
+Pydantic schemas for request/response serialisation.
+"""
+
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
-class SensorBase(BaseModel):
-    name: str
-    type: str
-    location: str
-    is_active: bool = True
-
-
-class SensorCreate(SensorBase):
-    id: str
-
-
-class SensorUpdate(BaseModel):
-    name: Optional[str] = None
-    type: Optional[str] = None
-    location: Optional[str] = None
-    is_active: Optional[bool] = None
-
-
-class Sensor(SensorBase):
-    id: str
-    created_at: datetime
-    updated_at: Optional[datetime]
-
-    class Config:
-        from_attributes = True
-
-
-class SensorReadingBase(BaseModel):
-    sensor_id: str
+class SensorReadingOut(BaseModel):
+    """A single persisted sensor reading."""
+    id: int
+    timestamp: datetime
     sensor_type: str
+    metric: str
     value: float
     unit: str
 
-
-class SensorReadingCreate(SensorReadingBase):
-    pass
-
-
-class SensorReading(SensorReadingBase):
-    id: int
-    timestamp: datetime
-
     class Config:
         from_attributes = True
 
 
-class AirQualityData(BaseModel):
-    pm25: float
-    pm10: float
-    co2: float
-    voc: float
-    temperature: float
-    humidity: float
-    timestamp: datetime
+class SensorDataResponse(BaseModel):
+    """Aggregated current sensor data returned by /api/sensors/current."""
+    timestamp: str
+    sensors: Dict[str, Any]
 
 
-class SystemStatusBase(BaseModel):
-    uptime: float
-    cpu_usage: float
-    memory_usage: float
-    disk_usage: float
+class SensorHealthResponse(BaseModel):
+    bme680: bool
+    dht22: bool
+    motion: bool
+    manager_running: bool
 
 
-class SystemStatus(SystemStatusBase):
+class ReadingStatsResponse(BaseModel):
+    min: Optional[float] = None
+    max: Optional[float] = None
+    avg: Optional[float] = None
+    count: int = 0
+    timeframe: str
+
+
+class SystemEventOut(BaseModel):
     id: int
     timestamp: datetime
+    event_type: str
+    source: str
+    message: str
+    metadata_: Optional[str] = None
 
     class Config:
         from_attributes = True
-
-
-class SystemStatusResponse(SystemStatusBase):
-    timestamp: datetime

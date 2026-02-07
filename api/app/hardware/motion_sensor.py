@@ -1,140 +1,141 @@
 """
-Motion Sensor Interface
-This module provides functions to read from PIR motion sensors.
+PIR Motion Sensor Driver
+Monitors a GPIO pin for motion events with 300 ms debounce.
+Supports callback-based notification and background monitoring.
 """
 
-from typing import Optional
-import time
+from typing import Callable, Optional
 import logging
+import time
+import threading
+
+logger = logging.getLogger(__name__)
 
 try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
 except ImportError:
     GPIO_AVAILABLE = False
-    logging.warning("RPi.GPIO library not available. Using mock motion sensor.")
-
-# Configure logging
-logger = logging.getLogger(__name__)
-
-# Global GPIO state
-_gpio_initialized = False
-
-def _initialize_gpio():
-    """Initialize GPIO if not already done"""
-    global _gpio_initialized
-    if _gpio_initialized:
-        return True
-
-    if not GPIO_AVAILABLE:
-        logger.warning("GPIO not available - using mock motion sensor")
-        return False
-
-    try:
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-        _gpio_initialized = True
-        logger.info("GPIO initialized for motion sensor")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to initialize GPIO: {e}")
-        return False
-
-def read_motion(pin: int = 4) -> bool:
-    """
-    Read motion sensor state
-    Returns: True if motion detected, False otherwise
-
-    Note: pin should be BCM GPIO number (4 for physical pin 7)
-    """
-    try:
-        if not _initialize_gpio():
-            # Mock implementation when GPIO not available
-            import random
-            return random.random() < 0.1  # 10% chance of detecting motion
-
-        # Set up pin as input
-        GPIO.setup(pin, GPIO.IN)
-
-        # Read the pin state
-        motion_detected = GPIO.input(pin) == GPIO.HIGH
-
-        return motion_detected
-
-    except Exception as e:
-        logger.error(f"Error reading motion sensor: {e}")
-        return False
-
-
-def initialize_sensor(pin: int = 4) -> bool:
-    """
-    Initialize the motion sensor
-    Note: pin should be BCM GPIO number (4 for physical pin 7)
-    """
-    try:
-        if not _initialize_gpio():
-            logger.warning("Motion sensor initialization skipped - GPIO not available")
-            return False
-
-        # Set up pin as input with pull-down resistor
-        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-
-        logger.info(f"Motion sensor initialized on GPIO pin {pin}")
-        return True
-    except Exception as e:
-        logger.error(f"Error initializing motion sensor: {e}")
-        return False
+    logger.warning("RPi.GPIO not available – mock mode enabled")
 
 
 class MotionSensor:
-    """Motion sensor class for continuous monitoring"""
+    """Driver for a PIR motion sensor on a single GPIO pin."""
 
-    def __init__(self, pin: int = 4):
-        """
-        Initialize motion sensor
-        pin: BCM GPIO pin number (default 4 = physical pin 7)
-        """
-        self.pin = pin
-        self.initialized = initialize_sensor(pin)
+    _DEBOUNCE_MS: int = 300
 
-        # Motion detection state
-        self.last_motion_time = 0
-        self.motion_timeout = 30  # seconds to keep display active after motion
+    def __init__(
+        self,
+        pin: int = 4,
+        callback: Optional[Callable[[], None]] = None,
+    ) -> None:
+        self._pin = pin
+        self._callback = callback
+        self._initialized = False
+        self._last_motion_time: float = 0.0
+        self._lock = threading.Lock()
+        self._monitor_thread: Optional[threading.Thread] = None
+        self._running = False
 
-    def detect_motion(self) -> bool:
-        """Detect if motion is currently present"""
-        if not self.initialized:
+        self._initialize()
+
+    # ------------------------------------------------------------------
+    # Initialization
+    # ------------------------------------------------------------------
+
+    def _initialize(self) -> None:
+        if not GPIO_AVAILABLE:
+            logger.info("PIR motion sensor running in mock mode")
+            return
+
+        try:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setwarnings(False)
+            GPIO.setup(self._pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+
+            # Edge-triggered event detection with debounce
+            GPIO.add_event_detect(
+                self._pin,
+                GPIO.RISING,
+                callback=self._on_motion,
+                bouncetime=self._DEBOUNCE_MS,
+            )
+            self._initialized = True
+            logger.info(f"PIR motion sensor initialised on GPIO{self._pin}")
+        except Exception as exc:
+            logger.error(f"PIR init failed: {exc}")
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def is_motion_detected(self) -> bool:
+        """Return True if the GPIO pin is currently HIGH."""
+        if not self._initialized:
+            import random
+            return random.random() < 0.1
+
+        try:
+            return GPIO.input(self._pin) == GPIO.HIGH
+        except Exception:
             return False
-        return read_motion(self.pin)
 
-    def wait_for_motion(self, timeout: Optional[float] = None) -> bool:
-        """Wait for motion to be detected"""
-        if not self.initialized:
-            return False
+    def time_since_last_motion(self) -> float:
+        """Seconds since the last motion event (0.0 if never detected)."""
+        with self._lock:
+            if self._last_motion_time == 0.0:
+                return 0.0
+            return time.time() - self._last_motion_time
 
-        start_time = time.time()
-        while timeout is None or (time.time() - start_time) < timeout:
-            if self.detect_motion():
-                self.last_motion_time = time.time()
-                return True
-            time.sleep(0.1)  # Check every 100ms
-        return False
+    def set_callback(self, func: Callable[[], None]) -> None:
+        """Register a function to call when motion is detected."""
+        self._callback = func
 
-    def should_display_be_active(self) -> bool:
-        """Check if display should be active based on recent motion"""
-        if not self.initialized:
-            return True  # Always active if no motion sensor
+    def start_monitoring(self) -> None:
+        """Start a background thread that periodically logs motion state."""
+        if self._running:
+            return
+        self._running = True
+        self._monitor_thread = threading.Thread(
+            target=self._monitor_loop, daemon=True, name="pir-monitor"
+        )
+        self._monitor_thread.start()
+        logger.info("PIR background monitoring started")
 
-        time_since_motion = time.time() - self.last_motion_time
-        return time_since_motion < self.motion_timeout
+    def stop_monitoring(self) -> None:
+        """Stop the background monitoring thread."""
+        self._running = False
+        if self._monitor_thread is not None:
+            self._monitor_thread.join(timeout=2)
+            self._monitor_thread = None
+        logger.info("PIR background monitoring stopped")
 
-    def get_status(self) -> dict:
-        """Get motion sensor status"""
-        return {
-            "initialized": self.initialized,
-            "gpio_available": GPIO_AVAILABLE,
-            "pin": self.pin,
-            "current_motion": self.detect_motion() if self.initialized else False,
-            "last_motion_seconds": time.time() - self.last_motion_time,
-            "display_active": self.should_display_be_active()
-        }
+    def cleanup(self) -> None:
+        """Release GPIO resources."""
+        self.stop_monitoring()
+        if self._initialized and GPIO_AVAILABLE:
+            try:
+                GPIO.remove_event_detect(self._pin)
+                GPIO.cleanup(self._pin)
+            except Exception:
+                pass
+            self._initialized = False
+            logger.info("PIR sensor cleaned up")
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _on_motion(self, _channel: int) -> None:
+        with self._lock:
+            self._last_motion_time = time.time()
+        logger.debug("Motion detected")
+        if self._callback is not None:
+            try:
+                self._callback()
+            except Exception as exc:
+                logger.error(f"Motion callback error: {exc}")
+
+    def _monitor_loop(self) -> None:
+        while self._running:
+            time.sleep(1)

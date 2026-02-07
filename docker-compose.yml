@@ -3,22 +3,24 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    image: breatheasy-api:latest
+    image: ghcr.io/lucy-janssens/breatheasy-api:latest
     container_name: breatheasy-api
     restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/app/data  # Persist database
-      - /sys:/sys:ro      # For GPIO access
+      - ./data:/app/data
+      - /sys:/sys:ro
     devices:
-      - /dev/gpiomem:/dev/gpiomem  # GPIO access
-      - /dev/i2c-1:/dev/i2c-1      # I2C for sensors/display
-    privileged: true  # Required for GPIO
+      - /dev/gpiomem:/dev/gpiomem
+      - /dev/i2c-1:/dev/i2c-1
+    privileged: true
     environment:
       - DATABASE_URL=sqlite:///./data/breatheasy.db
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - MQTT_BROKER_HOST=mqtt
+      - MQTT_BROKER_PORT=1883
     env_file:
       - .env
     healthcheck:
@@ -34,13 +36,11 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
-    image: breatheasy-client:latest
+    image: ghcr.io/lucy-janssens/breatheasy-client:latest
     container_name: breatheasy-client
     restart: unless-stopped
     ports:
       - "3000:80"
-    environment:
-      - VITE_API_URL=http://localhost:8000
     depends_on:
       api:
         condition: service_healthy
@@ -62,7 +62,7 @@ services:
     container_name: homeassistant
     restart: unless-stopped
     ports:
-      - "0.0.0.0:8123:8123"  # Bind to all interfaces for network access
+      - "0.0.0.0:8123:8123"
     volumes:
       - ./homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
@@ -78,7 +78,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ~/.docker/config.json:/config.json:ro
     environment:
-      - WATCHTOWER_POLL_INTERVAL=300  # Check every 5 minutes
+      - WATCHTOWER_POLL_INTERVAL=300
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_INCLUDE_RESTARTING=true
     command: breatheasy-api breatheasy-client

@@ -1,93 +1,97 @@
-import { useLatestReadings } from '../hooks/useReadings'
-import { formatTemperature, formatHumidity, formatAirQuality } from '../utils/formatters'
-import AirQualityChart from './AirQualityChart'
+import { useEffect, useState } from 'react'
+import { Thermometer, Droplets, Gauge, Wind, Eye } from 'lucide-react'
+import useWebSocket from '../hooks/useWebSocket'
+import { sensorApi } from '../services/api'
+import type { SensorReading, AirQualityLevel } from '../types/sensors'
 import SensorCard from './SensorCard'
+import Charts from './Charts'
+
+const aqLevel = (score: number | undefined): AirQualityLevel | undefined => {
+  if (score === undefined) return undefined
+  if (score >= 80) return 'Excellent'
+  if (score >= 60) return 'Good'
+  if (score >= 40) return 'Moderate'
+  if (score >= 20) return 'Poor'
+  return 'Very Poor'
+}
 
 const Dashboard = () => {
-  const { data: readings, isLoading, error } = useLatestReadings()
+  const { data: wsData, status: wsStatus } = useWebSocket()
+  const [reading, setReading] = useState<SensorReading | null>(null)
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-gray-500">Loading dashboard...</div>
-      </div>
-    )
-  }
+  // Seed with REST on mount, then prefer WebSocket data
+  useEffect(() => {
+    sensorApi.getCurrentReadings().then((res) => setReading(res.data)).catch(() => {})
+  }, [])
 
-  if (error) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-red-500">Error loading dashboard data</div>
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (wsData) setReading(wsData)
+  }, [wsData])
 
-  // Group readings by sensor type for display
-  const latestByType = readings?.reduce((acc, reading) => {
-    if (!acc[reading.sensor_type] || new Date(reading.timestamp) > new Date(acc[reading.sensor_type].timestamp)) {
-      acc[reading.sensor_type] = reading
-    }
-    return acc
-  }, {} as Record<string, any>) || {}
+  const bme = reading?.sensors?.bme680
+  const dht = reading?.sensors?.dht22
+  const motion = reading?.sensors?.motion
+
+  // Prefer BME680 temp/humidity, fall back to DHT22
+  const temp = bme?.temperature ?? dht?.temperature
+  const hum = bme?.humidity ?? dht?.humidity
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <div className="text-sm text-gray-500">
-          Last updated: {readings?.[0] ? new Date(readings[0].timestamp).toLocaleTimeString() : 'Never'}
+        <div className="flex items-center gap-3">
+          <span
+            className={`inline-block h-2.5 w-2.5 rounded-full ${
+              wsStatus === 'connected' ? 'bg-green-400' : 'bg-red-400'
+            }`}
+          />
+          <span className="text-sm text-gray-500">
+            {reading?.timestamp
+              ? `Updated ${new Date(reading.timestamp).toLocaleTimeString()}`
+              : 'Waiting for data...'}
+          </span>
         </div>
       </div>
 
-      {/* Current Readings Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Sensor cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <SensorCard
           title="Temperature"
-          value={latestByType.temperature ? formatTemperature(latestByType.temperature.value) : '--'}
-          unit="°C"
-          icon="🌡️"
+          value={temp !== undefined ? temp.toFixed(1) : null}
+          unit="\u00b0C"
+          icon={<Thermometer size={24} />}
         />
         <SensorCard
           title="Humidity"
-          value={latestByType.humidity ? formatHumidity(latestByType.humidity.value) : '--'}
+          value={hum !== undefined ? hum.toFixed(1) : null}
           unit="%"
-          icon="💧"
+          icon={<Droplets size={24} />}
         />
         <SensorCard
-          title="PM2.5"
-          value={latestByType.pm25 ? formatAirQuality(latestByType.pm25.value, 'pm25') : '--'}
-          unit="µg/m³"
-          icon="🌫️"
+          title="Pressure"
+          value={bme?.pressure !== undefined ? bme.pressure.toFixed(0) : null}
+          unit="hPa"
+          icon={<Gauge size={24} />}
         />
         <SensorCard
-          title="CO₂"
-          value={latestByType.co2 ? formatAirQuality(latestByType.co2.value, 'co2') : '--'}
-          unit="ppm"
-          icon="🌬️"
+          title="Air Quality"
+          value={bme?.air_quality_score !== undefined ? bme.air_quality_score.toFixed(0) : null}
+          unit="/100"
+          icon={<Wind size={24} />}
+          status={aqLevel(bme?.air_quality_score)}
+        />
+        <SensorCard
+          title="Motion"
+          value={motion ? (motion.motion_detected ? 'Detected' : 'Clear') : null}
+          unit=""
+          icon={<Eye size={24} />}
         />
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AirQualityChart />
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-semibold mb-4">Air Quality Status</h2>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span>PM2.5:</span>
-              <span className={latestByType.pm25?.value > 35 ? 'text-red-500' : latestByType.pm25?.value > 12 ? 'text-yellow-500' : 'text-green-500'}>
-                {latestByType.pm25 ? (latestByType.pm25.value > 35 ? 'Poor' : latestByType.pm25.value > 12 ? 'Moderate' : 'Good') : 'Unknown'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>CO₂:</span>
-              <span className={latestByType.co2?.value > 1000 ? 'text-red-500' : latestByType.co2?.value > 800 ? 'text-yellow-500' : 'text-green-500'}>
-                {latestByType.co2 ? (latestByType.co2.value > 1000 ? 'Poor' : latestByType.co2.value > 800 ? 'Moderate' : 'Good') : 'Unknown'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Charts />
     </div>
   )
 }
