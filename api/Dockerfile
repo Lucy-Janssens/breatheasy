@@ -3,6 +3,7 @@ FROM python:3.11-slim
 # System dependencies for GPIO, I2C, sensor libs, and Pillow
 RUN apt-get update && apt-get install -y \
     gcc \
+    make \
     python3-dev \
     i2c-tools \
     libgpiod-dev \

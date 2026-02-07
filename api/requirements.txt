@@ -11,7 +11,6 @@ paho-mqtt==1.6.1
 
 # Raspberry Pi sensor libraries
 RPi.GPIO==0.7.1
-bme680==1.1.1
 adafruit-circuitpython-bme680==3.5.0
 adafruit-circuitpython-dht==4.0.3
 smbus2==0.4.3
