@@ -122,6 +122,7 @@ class OLEDDisplay:
             Air: Good (75)
         """
         if not self._is_on:
+            logger.warning("display_sensor_data called but display is OFF")
             return
 
         self._last_activity = time.time()
@@ -139,6 +140,8 @@ class OLEDDisplay:
         pres_s = f"{pres:.0f}" if pres is not None else "----"
         aq_label = self._aq_label(aq)
         aq_s = f"{aq_label} ({aq:.0f})" if aq is not None else "N/A"
+
+        logger.info(f"Rendering to OLED: T={temp_s} H={hum_s} P={pres_s} AQ={aq_s}")
 
         if not self._initialized:
             logger.debug(

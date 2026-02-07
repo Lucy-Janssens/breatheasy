@@ -72,8 +72,12 @@ class DisplayManager:
     async def update_sensor_data(self, data: Dict[str, Any]) -> None:
         """Receive new sensor data and refresh the display if it's on."""
         self._latest_data = data
+        logger.debug(f"DisplayManager received data, display is_on={self._display._is_on}")
         if self._display._is_on:
             self._display.display_sensor_data(data)
+            logger.info("Display updated with sensor data")
+        else:
+            logger.warning("Display is off, not updating")
 
     async def show_message(self, msg: str, duration: float = 3.0) -> None:
         """Display a temporary message, then revert to sensor data."""

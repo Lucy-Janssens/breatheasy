@@ -124,14 +124,18 @@ async def shutdown_event() -> None:
 async def _display_feed_loop() -> None:
     """Push sensor data to the display every poll cycle."""
     await asyncio.sleep(5)
+    logger.info("Display feed loop started")
     while True:
         try:
             if _sensor_manager and _display_manager:
                 data = _sensor_manager.get_latest_readings()
                 if data:
+                    logger.debug(f"Updating display with data: {data}")
                     await _display_manager.update_sensor_data(data)
+                else:
+                    logger.warning("No sensor data available for display")
         except Exception as exc:
-            logger.error(f"Display feed error: {exc}")
+            logger.error(f"Display feed error: {exc}", exc_info=True)
         await asyncio.sleep(settings.sensor_poll_interval)
 
 
