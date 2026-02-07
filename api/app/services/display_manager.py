@@ -29,9 +29,15 @@ class DisplayManager:
         self._task: Optional[asyncio.Task] = None
         self._running = False
         self._latest_data: Dict[str, Any] = {}
+        
+        # Check if motion sensor is available
+        self._motion_available = motion_sensor._initialized
 
-        # Wire up motion callback to wake the display
-        self._motion.set_callback(self._on_motion)
+        # Wire up motion callback only if sensor is working
+        if self._motion_available:
+            self._motion.set_callback(self._on_motion)
+        else:
+            logger.info("PIR sensor unavailable – display will stay on")
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -90,7 +96,8 @@ class DisplayManager:
     async def _loop(self) -> None:
         while self._running:
             try:
-                if self._display._is_on and self._display.should_sleep():
+                # Only auto-sleep if motion sensor is available
+                if self._motion_available and self._display._is_on and self._display.should_sleep():
                     self._display.sleep()
             except Exception as exc:
                 logger.error(f"DisplayManager loop error: {exc}")
