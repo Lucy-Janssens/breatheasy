@@ -41,16 +41,22 @@ async def sensor_websocket(ws: WebSocket):
     _sensor_manager.add_websocket_client(ws)
     logger.info("WebSocket client connected")
 
-    # Push current state right away
-    latest = _sensor_manager.get_latest_readings()
-    if latest:
-        await ws.send_text(json.dumps(latest))
+    # Push current state right away (with error handling)
+    try:
+        latest = _sensor_manager.get_latest_readings()
+        if latest:
+            await ws.send_text(json.dumps(latest))
+    except Exception as exc:
+        logger.warning(f"Failed to send initial data: {exc}")
 
     try:
         # Keep the connection open — the SensorManager broadcasts on poll
         while True:
             # Wait for any incoming message (e.g. ping / keep-alive)
-            await ws.receive_text()
+            try:
+                await ws.receive_text()
+            except Exception:
+                break
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")
     except Exception as exc:
